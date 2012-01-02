@@ -9,11 +9,11 @@ WebService::Sprint - an interface to Sprint's web services
 
 =head1 VERSION
 
-Version 0.01
+Version 0.02
 
 =cut
 
-our $VERSION = '0.01';
+our $VERSION = '0.02';
 
 use DateTime;
 use Digest::MD5 qw(md5_hex);
@@ -23,16 +23,16 @@ use JSON;
 use URI;
 
 my %DEFAULTS = (
-	base_url =>
-	"http://sprintdevelopersandbox.com/developerSandbox/resources/v1/",
-	user_agent => "WebService::Sprint",
+    base_url =>
+      "http://sprintdevelopersandbox.com/developerSandbox/resources/v1/",
+    user_agent => "WebService::Sprint",
 );
 
 my %SERVICES = (
-	location  => 'location.json',
-	presence  => 'presence.json',
-	perimeter => 'geofence/checkPerimeter.json',
-	devices   => 'devices.json',
+    location  => 'location.json',
+    presence  => 'presence.json',
+    perimeter => 'geofence/checkPerimeter.json',
+    devices   => 'devices.json',
 );
 
 =head1 SYNOPSIS
@@ -42,20 +42,42 @@ Provides an object-oriented interface to Sprint's developer web services, includ
 Disclaimer: I am not affiliated with Sprint. This is an implementation of their publicly-available specifications. Sprint is probably a registered trademark, and is used here to highlight that this implementation is specific to the Sprint network.
 
 Implements some features of Sprint's developer web services. For more information, see:
- http://developer.sprint.com/site/global/sandbox/home.jsp
- http://developer.sprint.com/site/global/sandbox/sprint_services/sprint_services.jsp
+
+=over 4
+
+=item * L<http://developer.sprint.com/site/global/sandbox/home.jsp>
+
+=item * L<http://developer.sprint.com/site/global/sandbox/sprint_services/sprint_services.jsp>
+
+=back
 
 Currently supports:
- - presence
- - location (3G)
- - Geofence perimiter check
- - User management -- retrieving list of devices
+
+=over 4
+
+=item * presence
+
+=item * location (3G)
+
+=item * geofence perimeter check
+
+=item * User management -- retrieving list of devices
+
+=back
 
 Does not support:
- - All other geofence operations
- - SMS
- - User management -- adding or removing devices
- - iDen Content Uploader
+
+=over 4
+
+=item * All other geofence operations
+
+=item * SMS
+
+=item * User management -- adding or removing devices
+
+=item * iDen Content Uploader
+
+=back
 
 		use WebService::Sprint;
 
@@ -66,6 +88,8 @@ Does not support:
 
 		# Get the list of devices associated with your developer account
 		my $devices = $ws->get_devices(
+
+		  # Optionally limit to devices in a particular state
 			type   => 'approved',
 		);
 
@@ -83,11 +107,11 @@ Does not support:
 		my $presence = $ws->check_presence(
 			mdn       => '2225551212',
 
-			# Geofence coordinates
+			# Geofence coordinates in Decimal Degrees
 			latitude  => 45.000,
 			longitude => -120.000,
 
-			# Radius (seems to need to be more than 2000m)
+			# Radius in meters (server expects at least 2000 meters)
 			radius    => 5000,
 		);
 
@@ -104,44 +128,44 @@ Instantiates a Web Service object. Named arguments include:
 =cut
 
 sub new {
-	my ( $class, @args ) = @_;
+    my ( $class, @args ) = @_;
 
-	if ( @args % 2 ) {
-		die "Arguments must be valid name-value pairs";
-	}
+    if ( @args % 2 ) {
+        die "Arguments must be valid name-value pairs";
+    }
 
-	my %args = @args;
+    my %args = @args;
 
-	my $self = {};
+    my $self = {};
 
-	_get_defaults( $self, \%args );
+    _get_defaults( $self, \%args );
 
-	bless $self, $class;
+    bless $self, $class;
 
-	return $self;
+    return $self;
 
 }
 
 sub _get_defaults {
-	my ( $dst, $src ) = @_;
+    my ( $dst, $src ) = @_;
 
-	if (  !defined $dst
-		|| ref $dst ne 'HASH'
-		|| !defined $src
-		|| ref $src ne 'HASH' )
-	{
-		die "Invalid parameters";
-	}
+    if (  !defined $dst
+        || ref $dst ne 'HASH'
+        || !defined $src
+        || ref $src ne 'HASH' )
+    {
+        die "Invalid parameters";
+    }
 
-	while ( my ( $name, $value ) = each %DEFAULTS ) {
-		$dst->{$name} = $value;
-	}
+    while ( my ( $name, $value ) = each %DEFAULTS ) {
+        $dst->{$name} = $value;
+    }
 
-	while ( my ( $name, $value ) = each %{$src} ) {
-		$dst->{$name} = $value;
-	}
+    while ( my ( $name, $value ) = each %{$src} ) {
+        $dst->{$name} = $value;
+    }
 
-	return;
+    return;
 }
 
 =head2 get_devices
@@ -153,92 +177,82 @@ Given the argument type (pending, declined, deleted, approved, all), returns inf
 =cut
 
 sub get_devices {
-	my ($self, %args) = @_;
+    my ( $self, %args ) = @_;
 
-	my %params = (
-		service => 'devices',
-	);
+    my %params = ( service => 'devices', );
 
-	my $mdn;
-	if (defined $args{mdn})
-	{
-		if ($mdn = _clean_mdn($args{mdn})) {
-			$params{type} = 'mdn';
-			$params{mdn}  = $mdn;
-		}
-		else
-		{
-			die "Invalid MDN: $args{mdn}\n";
-		}
-	}
-	else
-	{
-		if (defined $args{type})
-		{
-			$params{type} =
-			($args{type} =~ m/^p(?:ending)?/i)  ? 'p' :
-			($args{type} =~ m/^dec(?:lined)?/i) ? 'x' :
-			($args{type} =~ m/^del(?:eted)?/i)  ? 'd' :
-			($args{type} =~ m/^ap(?:proved)/i)  ? 'a' :
-			($args{type} =~ m/^al(?:l)/i)       ? 'null' :
-			die "Invalid type: $args{type}\n";
-		}
-	}
+    my $mdn;
+    if ( defined $args{mdn} ) {
+        if ( $mdn = _clean_mdn( $args{mdn} ) ) {
+            $params{type} = 'mdn';
+            $params{mdn}  = $mdn;
+        }
+        else {
+            die "Invalid MDN: $args{mdn}\n";
+        }
+    }
+    else {
+        if ( defined $args{type} ) {
+            $params{type} =
+                ( $args{type} =~ m/^p(?:ending)?/i )  ? 'p'
+              : ( $args{type} =~ m/^dec(?:lined)?/i ) ? 'x'
+              : ( $args{type} =~ m/^del(?:eted)?/i )  ? 'd'
+              : ( $args{type} =~ m/^ap(?:proved)/i )  ? 'a'
+              : ( $args{type} =~ m/^al(?:l)/i )       ? 'null'
+              :   die "Invalid type: $args{type}\n";
+        }
+    }
 
-	my $devices = $self->issue_query(
-		service => 'devices',
-		params => \%params,
-	);
+    my $devices = $self->issue_query(
+        service => 'devices',
+        params  => \%params,
+    );
 
-	my %devices = (
-		original => $devices,
-		timestamp => time,
-	);
-	my @devices;
+    my %devices = (
+        original  => $devices,
+        timestamp => time,
+    );
+    my @devices;
 
-	$devices{auth_status} = lc _best_match($devices, qr/^auth.?status/i);
-	my $device_list = $devices->{devices};
-	if (defined $device_list)
-	{
-		if (ref $device_list eq 'HASH')
-		{
-			while (my ($status, $list) = each %{$device_list})
-			{
-				if (defined $list && ref $list eq 'ARRAY')
-				{
-					foreach my $mdn (@{$list})
-					{
-						push(@devices, {
-								mdn => $mdn,
-								status => lc $status,
-							},
-						);
-					}
-				}
-			}
-		}
-		elsif (ref $device_list eq 'ARRAY')
-		{
-			foreach my $mdn (@{$device_list})
-			{
-				push(@devices, {
-						mdn => $mdn,
-						status => $devices{auth_status},
-					},
-				);
-			}
-		}
-		else
-		{
-			$devices{devices} = $device_list;
-		}
-	}
+    $devices{auth_status} = lc _best_match( $devices, qr/^auth.?status/i );
+    my $device_list = $devices->{devices};
+    if ( defined $device_list ) {
+        if ( ref $device_list eq 'HASH' ) {
+            while ( my ( $status, $list ) = each %{$device_list} ) {
+                if ( defined $list && ref $list eq 'ARRAY' ) {
+                    foreach my $mdn ( @{$list} ) {
+                        push(
+                            @devices,
+                            {
+                                mdn    => $mdn,
+                                status => lc $status,
+                            },
+                        );
+                    }
+                }
+            }
+        }
+        elsif ( ref $device_list eq 'ARRAY' ) {
+            foreach my $mdn ( @{$device_list} ) {
+                push(
+                    @devices,
+                    {
+                        mdn    => $mdn,
+                        status => $devices{auth_status},
+                    },
+                );
+            }
+        }
+        else {
+            $devices{devices} = $device_list;
+        }
+    }
 
-	$devices{devices} = \@devices;
-	$devices{username} = _best_match($devices, qr/^username/i);
-	$devices{error} = _best_match($devices, qr/^error/i);
+    $devices{devices}  = \@devices;
+    $devices{username} = _best_match( $devices, qr/^username/i );
+    $devices{error}    = _best_match( $devices, qr/^error/i );
 
-	return \%devices;
+    return \%devices;
 }
 
 =head2 get_presence
@@ -250,55 +264,48 @@ This call should not use your credits.
 =cut
 
 sub get_presence {
-	my ($self, %args) = @_;
+    my ( $self, %args ) = @_;
 
-	if (! defined $args{mdn})
-	{
-		return;
-	}
+    if ( !defined $args{mdn} ) {
+        return;
+    }
 
-	if (ref $args{mdn} eq 'ARRAY')
-	{
-		my @response;
-		foreach my $mdn (@{$args{mdn}})
-		{
-			push(@response, $self->get_presence(mdn => $mdn));
-		}
-		return @response;
-	}
+    if ( ref $args{mdn} eq 'ARRAY' ) {
+        my @response;
+        foreach my $mdn ( @{ $args{mdn} } ) {
+            push( @response, $self->get_presence( mdn => $mdn ) );
+        }
+        return @response;
+    }
 
-	if (my $mdn = _clean_mdn($args{mdn}))
-	{
-		my $presence = $self->issue_query(
-			service => 'presence',
-			params => {
-				mdn => $mdn,
-			},
-		);
+    if ( my $mdn = _clean_mdn( $args{mdn} ) ) {
+        my $presence = $self->issue_query(
+            service => 'presence',
+            params  => { mdn => $mdn, },
+        );
 
-		my %presence = (
-			original => $presence,
-			mdn => $mdn,
-			timestamp => time,
-		);
+        my %presence = (
+            original  => $presence,
+            mdn       => $mdn,
+            timestamp => time,
+        );
 
-		$presence{error}     = _best_match($presence, qr/^error/i);
+        $presence{error} = _best_match( $presence, qr/^error/i );
 
-		my $reachable = _best_match($presence, qr/^status/i);
-		$presence{reachable} = ($reachable && $reachable =~ m/^reachable/i) ? 1 : 0;
+        my $reachable = _best_match( $presence, qr/^status/i );
+        $presence{reachable} =
+          ( $reachable && $reachable =~ m/^reachable/i ) ? 1 : 0;
 
-		my $response_mdn = _best_match($presence, qr/^mdn/i);
-		if (defined $response_mdn && $mdn ne $response_mdn)
-		{
-			die "Response received for incorrect MDN: $response_mdn\n";
-		}
+        my $response_mdn = _best_match( $presence, qr/^mdn/i );
+        if ( defined $response_mdn && $mdn ne $response_mdn ) {
+            die "Response received for incorrect MDN: $response_mdn\n";
+        }
 
-		return \%presence;
-	}
-	else
-	{
-		die "Invalid MDN: $args{mdn}\n";
-	}
+        return \%presence;
+    }
+    else {
+        die "Invalid MDN: $args{mdn}\n";
+    }
 }
 
 =head2 get_location
@@ -310,60 +317,51 @@ WARNING: This uses credits (3 per device query, last I checked)!
 =cut
 
 sub get_location {
-	my ($self, %args) = @_;
+    my ( $self, %args ) = @_;
 
-	if (! defined $args{mdn})
-	{
-		return;
-	}
+    if ( !defined $args{mdn} ) {
+        return;
+    }
 
-	if (ref $args{mdn} eq 'ARRAY')
-	{
-		my @response;
-		foreach my $mdn (@{$args{mdn}})
-		{
-			push(@response, $self->get_location(mdn => $mdn));
-		}
-		return @response;
-	}
+    if ( ref $args{mdn} eq 'ARRAY' ) {
+        my @response;
+        foreach my $mdn ( @{ $args{mdn} } ) {
+            push( @response, $self->get_location( mdn => $mdn ) );
+        }
+        return @response;
+    }
 
-	if (my $mdn = _clean_mdn($args{mdn}))
-	{
-		my $location = $self->issue_query(
-			service => 'location',
-			params => {
-				mdn => $mdn,
-			},
-		);
+    if ( my $mdn = _clean_mdn( $args{mdn} ) ) {
+        my $location = $self->issue_query(
+            service => 'location',
+            params  => { mdn => $mdn, },
+        );
 
-		my %location = (
-			original => $location,
-			mdn => $mdn,
-			timestamp => time,
-		);
+        my %location = (
+            original  => $location,
+            mdn       => $mdn,
+            timestamp => time,
+        );
 
-		$location{error}     = _best_match($location, qr/^error/i);
-		$location{latitude}  = _best_match($location, qr/^lat/i);
-		$location{longitude} = _best_match($location, qr/^lon/i);
-		$location{accuracy}  = _best_match($location, qr/^accuracy/i);
-		if (_best_match($location, qr/^old/i))
-		{
-			$location{old}++;
-		}
+        $location{error}     = _best_match( $location, qr/^error/i );
+        $location{latitude}  = _best_match( $location, qr/^lat/i );
+        $location{longitude} = _best_match( $location, qr/^lon/i );
+        $location{accuracy}  = _best_match( $location, qr/^accuracy/i );
+        if ( _best_match( $location, qr/^old/i ) ) {
+            $location{old}++;
+        }
 
-		my $response_mdn = _best_match($location, qr/^mdn/i);
-		if (defined $response_mdn && $mdn ne $response_mdn)
-		{
-			die "Response received for incorrect MDN: $response_mdn\n";
-		}
+        my $response_mdn = _best_match( $location, qr/^mdn/i );
+        if ( defined $response_mdn && $mdn ne $response_mdn ) {
+            die "Response received for incorrect MDN: $response_mdn\n";
+        }
 
-		return \%location;
-	}
-	else
-	{
-		die "Invalid MDN: $args{mdn}\n";
-	}
-} 
+        return \%location;
+    }
+    else {
+        die "Invalid MDN: $args{mdn}\n";
+    }
+}
 
 =head2 check_perimeter
 
@@ -376,104 +374,90 @@ WARNING: This uses credits (6 per device query, last I checked)!
 =cut
 
 sub check_perimeter {
-	my ($self, %args) = @_;
+    my ( $self, %args ) = @_;
 
-	if (! defined $args{mdn})
-	{
-		return;
-	}
+    if ( !defined $args{mdn} ) {
+        return;
+    }
 
-	my $latitude = _find_defined(@args{qw(lat latitude)})
-		or die "Latitude not provided";
+    my $latitude = _find_defined( @args{qw(lat latitude)} )
+      or die "Latitude not provided";
 
-	if (!_in_range($latitude, -90, 90))
-	{
-		die "Invalid latitude: $latitude\n";
-	}
+    if ( !_in_range( $latitude, -90, 90 ) ) {
+        die "Invalid latitude: $latitude\n";
+    }
 
-	my $longitude = _find_defined(@args{qw(lon longitude long)})
-		or die "Longitude not provided";
+    my $longitude = _find_defined( @args{qw(lon longitude long)} )
+      or die "Longitude not provided";
 
-	if (!_in_range($longitude, -180, 180))
-	{
-		die "Invalid longitude: $longitude\n";
-	}
+    if ( !_in_range( $longitude, -180, 180 ) ) {
+        die "Invalid longitude: $longitude\n";
+    }
 
-	my $radius = _find_defined(@args{qw(rad radius range)})
-		or die "Radius not provided";
+    my $radius = _find_defined( @args{qw(rad radius range)} )
+      or die "Radius not provided";
 
-	if (!_in_range($radius, 2000, undef))
-	{
-		die "Invalid radius: $radius\n";
-	}
+    if ( !_in_range( $radius, 2000, undef ) ) {
+        die "Invalid radius: $radius\n";
+    }
 
-	if (ref $args{mdn} eq 'ARRAY')
-	{
-		my @mdns = @{$args{mdn}};
+    if ( ref $args{mdn} eq 'ARRAY' ) {
+        my @mdns = @{ $args{mdn} };
 
-		my @response;
+        my @response;
 
-		foreach my $mdn (@mdns)
-		{
-			push(@response, $self->check_perimeter(
-					%args,
-					mdn => $mdn,
-				),
-			);
-		}
-		return @response;
-	}
+        foreach my $mdn (@mdns) {
+            push( @response, $self->check_perimeter( %args, mdn => $mdn, ), );
+        }
+        return @response;
+    }
 
-	if (my $mdn = _clean_mdn($args{mdn}))
-	{
-		my $status = $self->issue_query(
-			service => 'perimeter',
-			params => {
-				mdn => $mdn,
-				lat => $latitude,
-				long => $longitude,
-				rad => $radius,
-			},
-		);
+    if ( my $mdn = _clean_mdn( $args{mdn} ) ) {
+        my $status = $self->issue_query(
+            service => 'perimeter',
+            params  => {
+                mdn  => $mdn,
+                lat  => $latitude,
+                long => $longitude,
+                rad  => $radius,
+            },
+        );
 
-		my %status = (
-			original => $status,
-			mdn => $mdn,
-			timestamp => time,
-		);
+        my %status = (
+            original  => $status,
+            mdn       => $mdn,
+            timestamp => time,
+        );
 
-		$status{error}     = _best_match($status, qr/^error/i);
-		$status{latitude}  = _best_match($status, qr/^lat/i);
-		$status{longitude} = _best_match($status, qr/^lon/i);
-		$status{accuracy}  = _best_match($status, qr/^accuracy/i);
-		$status{comment}   = _best_match($status, qr/^comment/i);
+        $status{error}     = _best_match( $status, qr/^error/i );
+        $status{latitude}  = _best_match( $status, qr/^lat/i );
+        $status{longitude} = _best_match( $status, qr/^lon/i );
+        $status{accuracy}  = _best_match( $status, qr/^accuracy/i );
+        $status{comment}   = _best_match( $status, qr/^comment/i );
 
-		my $inside = _best_match($status, qr/^currentlocation/i);
-		$status{inside}    = ($inside && $inside =~ m/inside/i) ? 1 : 0;
+        my $inside = _best_match( $status, qr/^currentlocation/i );
+        $status{inside} = ( $inside && $inside =~ m/inside/i ) ? 1 : 0;
 
-		if (!$status{error} && $inside =~ qr/fail/i)
-		{
-			$status{error} = $inside;
-		}
+        if ( !$status{error} && $inside =~ qr/fail/i ) {
+            $status{error} = $inside;
+        }
 
-		$status{perimeter} = {
-			radius => _best_match($status, qr/^radius/i) || undef,
-			latitude => _best_match($status, qr/^glat/i) || undef,
-			longitude => _best_match($status, qr/^glong/i) || undef,
-		};
+        $status{perimeter} = {
+            radius    => _best_match( $status, qr/^radius/i ) || undef,
+            latitude  => _best_match( $status, qr/^glat/i )   || undef,
+            longitude => _best_match( $status, qr/^glong/i )  || undef,
+        };
 
-		my $response_mdn = _best_match($status, qr/^mdn/i);
-		if (defined $response_mdn && $mdn ne $response_mdn)
-		{
-			die "Response received for incorrect MDN: $response_mdn\n";
-		}
+        my $response_mdn = _best_match( $status, qr/^mdn/i );
+        if ( defined $response_mdn && $mdn ne $response_mdn ) {
+            die "Response received for incorrect MDN: $response_mdn\n";
+        }
 
-		return \%status;
-	}
-	else
-	{
-		die "Invalid MDN: $args{mdn}\n";
-	}
+        return \%status;
+    }
+    else {
+        die "Invalid MDN: $args{mdn}\n";
+    }
 }
 
 =head1 EXTRA METHODS
@@ -488,21 +472,19 @@ Provided for your convenience to access unimplemented services.
 =cut
 
 sub issue_query {
-	my ($self, %args) = @_;
+    my ( $self, %args ) = @_;
 
-	my $url = $self->build_url(%args);
-	#warn "URL: $url\n";
+    my $url = $self->build_url(%args);
 
-	my $response = $self->fetch_url(
-		url => $url,
-	);
-	#warn "Response: $response\n";
+    #warn "URL: $url\n";
 
-	my $output = $self->decode_response(
-		json => $response,
-	);
+    my $response = $self->fetch_url( url => $url, );
 
-	return $output;
+    #warn "Response: $response\n";
+
+    my $output = $self->decode_response( json => $response, );
+
+    return $output;
 }
 
 =head2 build_url
@@ -512,35 +494,30 @@ Given a list of named arguments, constructs the service URL, adding the timestam
 =cut
 
 sub build_url {
-	my ($self, %args) = @_;
+    my ( $self, %args ) = @_;
 
-	if (! defined $SERVICES{$args{service}})
-	{
-		die "Invalid service $args{service}\n";
-	}
+    if ( !defined $SERVICES{ $args{service} } ) {
+        die "Invalid service $args{service}\n";
+    }
 
-	my $dt = DateTime->now->set_time_zone('local');
+    my $dt = DateTime->now->set_time_zone('local');
 
-	my %params = (
-		key => $self->get_key,
-		timestamp => $dt->iso8601.$dt->time_zone_short_name,
-	);
+    my %params = (
+        key       => $self->get_key,
+        timestamp => $dt->iso8601 . $dt->time_zone_short_name,
+    );
 
-	while (my ($key, $value) = each %{$args{params}})
-	{
-		$params{$key} = $value;
-	}
+    while ( my ( $key, $value ) = each %{ $args{params} } ) {
+        $params{$key} = $value;
+    }
 
-	my $hash = $self->get_hash(%params);
+    my $hash = $self->get_hash(%params);
 
-	my $uri = URI->new($self->{base_url}.$SERVICES{$args{service}});
+    my $uri = URI->new( $self->{base_url} . $SERVICES{ $args{service} } );
 
-	$uri->query_form(
-		%params,
-		sig => $hash,
-	);
+    $uri->query_form( %params, sig => $hash, );
 
-	return $uri;
+    return $uri;
 }
 
 =head2 fetch_url
@@ -550,31 +527,29 @@ Given a named argument url, retrieves the URL. If successful, returns the conten
 =cut
 
 sub fetch_url {
-	my ($self, %args) = @_;
+    my ( $self, %args ) = @_;
 
-	my $url = $args{url}
-		or die "No URL to fetch";
+    my $url = $args{url}
+      or die "No URL to fetch";
 
-	my $ua = LWP::UserAgent->new
-		or die "Failed to create a User Agent\n";
+    my $ua = LWP::UserAgent->new
+      or die "Failed to create a User Agent\n";
 
-	$ua->agent($self->{user_agent});
+    $ua->agent( $self->{user_agent} );
 
-	my $req = HTTP::Request->new(GET => $url);
+    my $req = HTTP::Request->new( GET => $url );
 
-	my $res = $ua->request($req);
+    my $res = $ua->request($req);
 
-	my $json;
-	my $output;
+    my $json;
+    my $output;
 
-	if ($res->is_success)
-	{
-		return $res->content;
-	}
-	else
-	{
-		die $res->status_line;
-	}
+    if ( $res->is_success ) {
+        return $res->content;
+    }
+    else {
+        die $res->status_line;
+    }
 }
 
 =head2 decode_response
@@ -584,35 +559,30 @@ Given a named argument json containing the JSON response from a web service quer
 =cut
 
 sub decode_response {
-	my ($self, %args) = @_;
+    my ( $self, %args ) = @_;
 
-	if (! defined $args{json})
-	{
-		die "No response found";
-	}
+    if ( !defined $args{json} ) {
+        die "No response found";
+    }
 
-	my $output;
+    my $output;
 
-	DECODE_JSON:
-	{
-		eval {
-			$output = decode_json($args{json});
-		};
-		if ($@)
-		{
-			if ($args{json} =~ tr/\n\r//d)
-			{
-				warn "Trimmed line feeds from JSON response for compatibility\n";
-				redo DECODE_JSON;
-			}
-			else
-			{
-				die "$@\nRaw JSON: $args{json}\n";
-			}
-		}
-	}
+  DECODE_JSON:
+    {
+        eval { $output = decode_json( $args{json} ); };
+        if ($@) {
+            if ( $args{json} =~ tr/\n\r//d ) {
+                warn
+                  "Trimmed line feeds from JSON response for compatibility\n";
+                redo DECODE_JSON;
+            }
+            else {
+                die "$@\nRaw JSON: $args{json}\n";
+            }
+        }
+    }
 
-	return $output;
+    return $output;
 }
 
 =head2 get_hash
@@ -622,19 +592,18 @@ Given a named argument list, orders the keys and calculates the authentication h
 =cut
 
 sub get_hash {
-	my ($self, %args) = @_;
+    my ( $self, %args ) = @_;
 
-	my $secret = $self->get_secret
-		or die "No secret available";
+    my $secret = $self->get_secret
+      or die "No secret available";
 
-	my @hash_data;
-	foreach my $key (sort keys %args)
-	{
-		push(@hash_data, $key, $args{$key});
-	}
-	my $hash = md5_hex(join('', @hash_data, $secret));
+    my @hash_data;
+    foreach my $key ( sort keys %args ) {
+        push( @hash_data, $key, $args{$key} );
+    }
+    my $hash = md5_hex( join( '', @hash_data, $secret ) );
 
-	return $hash;
+    return $hash;
 }
 
 =head2 get_key
@@ -644,14 +613,13 @@ Returns the object's stored key. Provided for your convenience
 =cut
 
 sub get_key {
-	my ($self) = @_;
+    my ($self) = @_;
 
-	if (! defined $self->{key})
-	{
-		die "Key must be defined!\n";
-	}
+    if ( !defined $self->{key} ) {
+        die "Key must be defined!\n";
+    }
 
-	return $self->{key};
+    return $self->{key};
 }
 
 =head2 get_secret
@@ -661,14 +629,13 @@ Retuns the object's stored shared secret. Provided for your convenience.
 =cut
 
 sub get_secret {
-	my ($self) = @_;
+    my ($self) = @_;
 
-	if (!defined $self->{secret})
-	{
-		die "Secret must be defined!\n";
-	}
+    if ( !defined $self->{secret} ) {
+        die "Secret must be defined!\n";
+    }
 
-	return $self->{secret};
+    return $self->{secret};
 }
 
 =head1 AUTHOR
@@ -732,103 +699,93 @@ See http://dev.perl.org/licenses/ for more information.
 
 # Sanitizes an mdn
 sub _clean_mdn {
-	my ($orig_mdn) = @_;
+    my ($orig_mdn) = @_;
 
-	# Strip unseemly characters
-	$orig_mdn =~ s/[\s()]//g;
+    # Strip unseemly characters
+    $orig_mdn =~ s/[\s()]//g;
 
-	if (my @parts =
-		($orig_mdn =~ m/^(?:\+?1)?[\-\.]?(\d{3})[\-\.]?(\d{3})[\-\.]?(\d{4})$/))
-	{
-		return join('', @parts);
-	}
-	else
-	{
-		return;
-	}
+    if (
+        my @parts = (
+            $orig_mdn =~
+              m/^(?:\+?1)?[\-\.]?(\d{3})[\-\.]?(\d{3})[\-\.]?(\d{4})$/
+        )
+      )
+    {
+        return join( '', @parts );
+    }
+    else {
+        return;
+    }
 }
 
 # Returns the first defined argument in the argument list
 sub _find_defined {
-	foreach my $arg (@_)
-	{
-		if (defined $arg)
-		{
-			return $arg;
-		}
-	}
-	return;
+    foreach my $arg (@_) {
+        if ( defined $arg ) {
+            return $arg;
+        }
+    }
+    return;
 }
 
 # Determines whether the supplied number is in the supplied range.
 sub _in_range {
-	my ($number, $lower, $upper) = @_;
+    my ( $number, $lower, $upper ) = @_;
 
-	if ($number !~ m/^-?\d+(\.\d*)?$/)
-	{
-		die "Not a floating point number: $number\n";
-	}
+    if ( $number !~ m/^-?\d+(\.\d*)?$/ ) {
+        die "Not a floating point number: $number\n";
+    }
 
-	if (defined $lower)
-	{
-		if ($number < $lower)
-		{
-			return;
-		}
-	}
+    if ( defined $lower ) {
+        if ( $number < $lower ) {
+            return;
+        }
+    }
 
-	if (defined $upper)
-	{
-		if ($number > $upper)
-		{
-			return;
-		}
-	}
+    if ( defined $upper ) {
+        if ( $number > $upper ) {
+            return;
+        }
+    }
 
-	return 1;
+    return 1;
 }
 
 # Returns the value from the supplied hashref whose key best matches the supplied regex
 sub _best_match {
-	my ($h, $re) = @_;
+    my ( $h, $re ) = @_;
 
-	if (ref $h ne 'HASH')
-	{
-		return;
-	}
+    if ( ref $h ne 'HASH' ) {
+        return;
+    }
 
-	if (ref $re ne 'Regexp')
-	{
-		die "$re is not a Regular Expression";
-	}
+    if ( ref $re ne 'Regexp' ) {
+        die "$re is not a Regular Expression";
+    }
 
-	KEY:
-	foreach my $key (sort _by_length keys %{$h})
-	{
-		if ($key =~ $re)
-		{
-			return $h->{$key};
-		}
-	}
+  KEY:
+    foreach my $key ( sort _by_length keys %{$h} ) {
+        if ( $key =~ $re ) {
+            return $h->{$key};
+        }
+    }
 
-	return;
+    return;
 }
 
 # Sorting helper function to order arguments by length
 sub _by_length {
-	my $a_len = 0;
-	my $b_len = 0;
+    my $a_len = 0;
+    my $b_len = 0;
 
-	if (defined $a)
-	{
-		$a_len = length $a;
-	}
-	if (defined $b)
-	{
-		$b_len = length $b;
-	}
+    if ( defined $a ) {
+        $a_len = length $a;
+    }
+    if ( defined $b ) {
+        $b_len = length $b;
+    }
 
-	return $a_len <=> $b_len;
+    return $a_len <=> $b_len;
 }
 
-1; # End of WebService::Sprint
+1;    # End of WebService::Sprint

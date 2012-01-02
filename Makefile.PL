@@ -5,7 +5,13 @@ WriteMakefile
   'NAME' => 'WebService::Sprint',
   'VERSION_FROM' => 'lib/WebService/Sprint.pm',
   'PREREQ_PM' => {
-                   'Test::More' => 0
+                   'DateTime' => 0,
+                   'Digest::MD5' => 0,
+                   'JSON' => 0,
+                   'LWP::Simple' => 0,
+                   'LWP::UserAgent' => 0,
+                   'Test::More' => 0,
+                   'URI' => 0
                  },
   'INSTALLDIRS' => 'site',
   'EXE_FILES' => [],

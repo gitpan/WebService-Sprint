@@ -15,7 +15,14 @@ name: WebService-Sprint
 provides:
   WebService::Sprint:
     file: lib/WebService/Sprint.pm
-    version: 0.01
+    version: 0.02
+requires:
+  DateTime: 0
+  Digest::MD5: 0
+  JSON: 0
+  LWP::Simple: 0
+  LWP::UserAgent: 0
+  URI: 0
 resources:
   license: http://dev.perl.org/licenses/
-version: 0.01
+version: 0.02
