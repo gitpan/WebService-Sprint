@@ -9,11 +9,11 @@ WebService::Sprint - an interface to Sprint's web services
 
 =head1 VERSION
 
-Version 0.02
+Version 0.50
 
 =cut
 
-our $VERSION = '0.02';
+our $VERSION = '0.50';
 
 use DateTime;
 use Digest::MD5 qw(md5_hex);
@@ -33,11 +33,12 @@ my %SERVICES = (
     presence  => 'presence.json',
     perimeter => 'geofence/checkPerimeter.json',
     devices   => 'devices.json',
+    device    => 'device.json',
 );
 
-=head1 SYNOPSIS
+=head1 DESCRIPTION
 
-Provides an object-oriented interface to Sprint's developer web services, including geolocation of Sprint devices.
+Provides an object-oriented interface to Sprint's developer web services, including geolocation of devices on Sprint's CDMA network in the United States.
 
 Disclaimer: I am not affiliated with Sprint. This is an implementation of their publicly-available specifications. Sprint is probably a registered trademark, and is used here to highlight that this implementation is specific to the Sprint network.
 
@@ -49,19 +50,21 @@ Implements some features of Sprint's developer web services. For more informatio
 
 =item * L<http://developer.sprint.com/site/global/sandbox/sprint_services/sprint_services.jsp>
 
+=item * L<https://developer.sprint.com/dynamicContent/sprintservices/devtools/>
+
 =back
 
 Currently supports:
 
 =over 4
 
-=item * presence
+=item * Presence
 
-=item * location (3G)
+=item * Location (3G)
 
-=item * geofence perimeter check
+=item * Geofence perimeter check
 
-=item * User management -- retrieving list of devices
+=item * User management -- retrieving list of devices, adding or removing devices
 
 =back
 
@@ -73,68 +76,81 @@ Does not support:
 
 =item * SMS
 
-=item * User management -- adding or removing devices
-
 =item * iDen Content Uploader
 
 =back
 
-		use WebService::Sprint;
+=head1 SYNOPSIS
 
-		my $ws = WebService::Sprint->new(
-			key 	 => '0123456789abcdef',
-			secret => 'fedcba98765432100123456789abcdef',
-		);
+    use WebService::Sprint;
 
-		# Get the list of devices associated with your developer account
-		my $devices = $ws->get_devices(
+    my $ws = WebService::Sprint->new(
+      key    => '0123456789abcdef',
+      secret => 'fedcba98765432100123456789abcdef',
+    );
 
-		  # Optionally limit to devices in a particular state
-			type   => 'approved',
-		);
+    # Get the list of devices associated with your developer account
+    my $devices = $ws->get_devices(
 
-		# Fetch the network location of a single device
-		my $location = $ws->get_location(
-			mdn    => '2225551212',
-		);
+      # Optionally limit to devices in a particular state
+      type   => 'approved',
+    );
 
-		# Fetch the location of multiple devices (issues multiple queries behind the scenes, serially)
-		my @locations = $ws->get_location(
-			mdn    => [qw(2225551212 8885551234)],
-		);
+    # Request addition of a device to your account (requires user approval
+    # via SMS)
+    my $device = $ws->add_device(
+      mdn    => '2225551212',
+    );
 
-		# Check whether a device is within a given geofence
-		my $presence = $ws->check_presence(
-			mdn       => '2225551212',
+    # Remove a device from your account
+    my $device = $ws->del_device(
+      mdn    => '2225551212',
+    );
 
-			# Geofence coordinates in Decimal Degrees
-			latitude  => 45.000,
-			longitude => -120.000,
+    # Check whether a given device is present on the network
+    my $presence = $ws->get_presence(
+      mdn    => '2225551212',
+    );
 
-			# Radius in meters (server expects at least 2000 meters)
-			radius    => 5000,
-		);
+    # Fetch the network location of a single device
+    my $location = $ws->get_location(
+      mdn    => '2225551212',
+    );
+
+    # Fetch the location of multiple devices (issues multiple queries
+    # behind the scenes, serially)
+    my @locations = $ws->get_location(
+      mdn    => [qw(2225551212 8885551234)],
+    );
+
+    # Check whether a device is within a given geofence
+    my $location = $ws->check_perimeter(
+      mdn       => '2225551212',
+
+      # Geofence coordinates in Decimal Degrees
+      latitude  => 45.000,
+      longitude => -120.000,
+
+      # Radius in meters (server requires at least 2000 meters)
+      radius    => 5000,
+    );
 
 =head1 METHODS
 
 =head2 new
 
 Instantiates a Web Service object. Named arguments include:
-	key: Your Sprint-assigned developer key
-	secret: Your Sprint-assigned shared secret
-	base_url: The base URL for Sprint services (defaults to http://sprintdevelopersandbox.com/developerSandbox/resources/v1/)
-	user_agent: HTTP user agent used (defaults to WebService::Sprint)
+    B<key>: Your Sprint-assigned developer key
+    B<secret>: Your Sprint-assigned shared secret
+    B<base_url>: The base URL for Sprint services (defaults to L<http://sprintdevelopersandbox.com/developerSandbox/resources/v1/>)
+    B<user_agent>: HTTP user agent used (defaults to L<WebService::Sprint>)
 
 =cut
 
 sub new {
-    my ( $class, @args ) = @_;
-
-    if ( @args % 2 ) {
-        die "Arguments must be valid name-value pairs";
-    }
-
-    my %args = @args;
+    die "Arguments must be valid name-value pairs"
+      unless @_ % 2;
+    my ( $class, %args ) = @_;
 
     my $self = {};
 
@@ -171,15 +187,15 @@ sub _get_defaults {
 =head2 get_devices
 
 Given no arguments, returns a hashref of devices associated with your developer account, indicating status.
-Given the argument mdn with a valid 10-digit phone number, returns information about that device only.
-Given the argument type (pending, declined, deleted, approved, all), returns information about only that subset of devices associated with your account.
+Given the argument B<mdn> with a valid 10-digit phone number, returns information about that device only.
+Given the argument B<type> (I<pending>, I<declined>, I<deleted>, I<approved>, I<all>), returns information about only that subset of devices associated with your account.
 
 =cut
 
 sub get_devices {
     my ( $self, %args ) = @_;
 
-    my %params = ( service => 'devices', );
+    my %params;
 
     my $mdn;
     if ( defined $args{mdn} ) {
@@ -255,9 +271,91 @@ sub get_devices {
     return \%devices;
 }
 
+=head2 add_device
+
+Given the argument B<mdn> with a valid 10-digit phone number, attempts to add the user to your account. Returns a hashref including status of the request.
+
+=cut
+
+sub add_device {
+    my ( $self, %args ) = @_;
+
+    my %params = ( method => 'add', );
+
+    my $mdn;
+    if ( defined $args{mdn} ) {
+        if ( $mdn = _clean_mdn( $args{mdn} ) ) {
+            $params{mdn} = $mdn;
+        }
+        else {
+            die "Invalid MDN: $args{mdn}\n";
+        }
+    }
+    else {
+        return;
+    }
+
+    my $device = $self->issue_query(
+        service => 'device',
+        params  => \%params,
+    );
+
+    my %device = (
+        original  => $device,
+        timestamp => time,
+    );
+
+    $device{mdn} = lc _best_match( $device, qr/^mdn$/i ) || $params{mdn};
+    $device{status} = lc _best_match( $device, qr/^message/i );
+    $device{error} = _best_match( $device, qr/^error/i );
+
+    return \%device;
+}
+
+=head2 del_device
+
+Given the argument B<mdn> with a valid 10-digit phone number, attempts to remove the user from your account. Returns a hashref including status of the request.
+
+=cut
+
+sub del_device {
+    my ( $self, %args ) = @_;
+
+    my %params = ( method => 'delete', );
+
+    my $mdn;
+    if ( defined $args{mdn} ) {
+        if ( $mdn = _clean_mdn( $args{mdn} ) ) {
+            $params{mdn} = $mdn;
+        }
+        else {
+            die "Invalid MDN: $args{mdn}\n";
+        }
+    }
+    else {
+        return;
+    }
+
+    my $device = $self->issue_query(
+        service => 'device',
+        params  => \%params,
+    );
+
+    my %device = (
+        original  => $device,
+        timestamp => time,
+    );
+
+    $device{mdn} = lc _best_match( $device, qr/^mdn$/i ) || $params{mdn};
+    $device{status} = lc _best_match( $device, qr/^message/i );
+    $device{error} = _best_match( $device, qr/^error/i );
+
+    return \%device;
+}
+
 =head2 get_presence
 
-Given the argument mdn as a single or list of 10-digit phone numbers, returns a hashref (or list of hashrefs) with detailed information about the presence of the requested device on the Sprint network.
+Given the argument B<mdn> as a single or list of 10-digit phone numbers, returns a hashref (or list of hashrefs) with detailed information about the presence of the requested device on the Sprint network.
 
 This call should not use your credits.
 
@@ -310,9 +408,9 @@ sub get_presence {
 
 =head2 get_location
 
-Given the argument mdn as a single or list of 10-digit phone numbers, returns a hashref (or list of hashrefs) with detailed information about the network-based location of the requested device.
+Given the argument B<mdn> as a single or list of 10-digit phone numbers, returns a hashref (or list of hashrefs) with detailed information about the location of the requested device. This usually returns a network-determined low-precision location for the device, and completes within about 5 seconds. It usually does I<not> activate the device's GPS receiver.
 
-WARNING: This uses credits (3 per device query, last I checked)!
+B<WARNING: This uses credits (3 per device query, last I checked)!>
 
 =cut
 
@@ -365,11 +463,11 @@ sub get_location {
 
 =head2 check_perimeter
 
-Works similarly to get_location, but is intended to determine whether a given device is within a specified geofence. Takes the additional (required) parameters latitude, longitude (both in decimal degrees), and range (in meters). Returns location information, the specified geofence, and whether the device is inside the defined fence.
+Works similarly to C<get_location>, but is intended to determine whether a given device is within a specified geofence. Takes the additional (required) parameters B<latitude>, B<longitude> (both in decimal degrees), and B<radius> (in meters). Returns location information, the specified geofence, and whether the device is inside the defined fence.
 
-This is a distincly different service call to Sprint, even though it could be implemented with some geo-math around get_location. Specifically, this service call attempts to obtain a higher-precision location, and consequently, Sprint charges more credits for its use.
+This is a distinctly different service call to Sprint, even though it could be implemented with some geo-math around C<get_location>. Specifically, this service call attempts to obtain a higher-precision location, and consequently, Sprint charges more credits for its use. Usually it will trigger a GPS location request on the device itself, and may take around 40 seconds to complete.
 
-WARNING: This uses credits (6 per device query, last I checked)!
+B<WARNING: This uses credits (6 per device query, last I checked)!>
 
 =cut
 
@@ -467,7 +565,7 @@ These are underlying methods that may be useful to extend this module for use wi
 =head2 issue_query
 
 Given a list of named arguments, issues a web service request. Calling this method takes care of timestamp and authentication/hashing requirements for you.
-Provided for your convenience to access unimplemented services.
+Provided for your convenience to access herein-unimplemented services.
 
 =cut
 
@@ -500,7 +598,7 @@ sub build_url {
         die "Invalid service $args{service}\n";
     }
 
-    my $dt = DateTime->now->set_time_zone('local');
+    my $dt = DateTime->now( time_zone => 'local', );
 
     my %params = (
         key       => $self->get_key,
@@ -541,9 +639,6 @@ sub fetch_url {
 
     my $res = $ua->request($req);
 
-    my $json;
-    my $output;
-
     if ( $res->is_success ) {
         return $res->content;
     }
@@ -572,8 +667,10 @@ sub decode_response {
         eval { $output = decode_json( $args{json} ); };
         if ($@) {
             if ( $args{json} =~ tr/\n\r//d ) {
-                warn
-                  "Trimmed line feeds from JSON response for compatibility\n";
+
+  # This happens reliably on certain requests, so we just handle it silently now
+  # warn
+  #   "Trimmed line feeds from JSON response for compatibility\n";
                 redo DECODE_JSON;
             }
             else {
@@ -608,7 +705,7 @@ sub get_hash {
 
 =head2 get_key
 
-Returns the object's stored key. Provided for your convenience
+Returns the object's stored key. Provided for your convenience.
 
 =cut
 
@@ -624,7 +721,7 @@ sub get_key {
 
 =head2 get_secret
 
-Retuns the object's stored shared secret. Provided for your convenience.
+Returns the object's stored shared secret. Provided for your convenience.
 
 =cut
 
@@ -647,9 +744,6 @@ Brett T. Warden, C<< <bwarden at cpan.org> >>
 Please report any bugs or feature requests to C<bug-webservice-sprint at rt.cpan.org>, or through
 the web interface at L<http://rt.cpan.org/NoAuth/ReportBug.html?Queue=WebService-Sprint>.  I will be notified, and then you'll
 automatically be notified of progress on your bug as I make changes.
-
-
-
 
 =head1 SUPPORT
 
@@ -681,12 +775,12 @@ L<http://search.cpan.org/dist/WebService-Sprint/>
 =back
 
 
-=head1 ACKNOWLEDGEMENTS
+=head1 ACKNOWLEDGMENTS
 
 
 =head1 LICENSE AND COPYRIGHT
 
-Copyright 2011 Brett T. Warden.
+Copyright 2011-2012 Brett T. Warden.
 
 This program is free software; you can redistribute it and/or modify it
 under the terms of either: the GNU General Public License as published
